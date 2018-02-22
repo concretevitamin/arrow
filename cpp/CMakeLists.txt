@@ -191,6 +191,11 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
     "Build with zlib compression"
     ON)
 
+  option(ARROW_WITH_CRC32C
+    "Build with crc32c"
+    ON)
+
+
   option(ARROW_WITH_ZSTD
     "Build with zstd compression"
     ON)

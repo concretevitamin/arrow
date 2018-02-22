@@ -47,6 +47,8 @@
 #include "plasma/plasma.h"
 #include "plasma/protocol.h"
 
+#include "crc32c/crc32c.h"
+
 #define XXH_STATIC_LINKING_ONLY
 #include "thirdparty/xxhash.h"
 
@@ -403,10 +405,13 @@ Status PlasmaClient::Contains(const ObjectID& object_id, bool* has_object) {
 }
 
 static void ComputeBlockHash(const unsigned char* data, int64_t nbytes, uint64_t* hash) {
-  XXH64_state_t hash_state;
-  XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
-  XXH64_update(&hash_state, data, nbytes);
-  *hash = XXH64_digest(&hash_state);
+  const uint32_t checksum = crc32c::Crc32c(data, // static_cast<const char*>(data),
+                                           static_cast<size_t>(nbytes));
+  *hash = static_cast<uint64_t>(checksum);
+  // XXH64_state_t hash_state;
+  // XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
+  // XXH64_update(&hash_state, data, nbytes);
+  // *hash = XXH64_digest(&hash_state);
 }
 
 static inline bool compute_object_hash_parallel(XXH64_state_t* hash_state,

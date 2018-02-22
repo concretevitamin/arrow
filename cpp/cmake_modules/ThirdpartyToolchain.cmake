@@ -61,6 +61,7 @@ if (NOT "$ENV{ARROW_BUILD_TOOLCHAIN}" STREQUAL "")
   set(GFLAGS_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
   set(SNAPPY_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
   set(ZLIB_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
+  set(CRC32C_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
   set(BROTLI_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
   set(LZ4_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
   set(ZSTD_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
@@ -95,6 +96,10 @@ endif()
 if (DEFINED ENV{ZLIB_HOME})
   set(ZLIB_HOME "$ENV{ZLIB_HOME}")
 endif()
+if (DEFINED ENV{CRC32C_HOME})
+  set(CRC32C_HOME "$ENV{CRC32C_HOME}")
+endif()
+
 
 if (DEFINED ENV{BROTLI_HOME})
   set(BROTLI_HOME "$ENV{BROTLI_HOME}")
@@ -582,6 +587,53 @@ if (ARROW_WITH_ZLIB)
 
   if (ZLIB_VENDORED)
     add_dependencies(zlib zlib_ep)
+  endif()
+endif()
+
+if (ARROW_WITH_CRC32C)
+# ----------------------------------------------------------------------
+# CRC32C
+
+  if("${CRC32C_HOME}" STREQUAL "")
+    set(CRC32C_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/crc32c_ep/src/crc32c_ep-install")
+    set(CRC32C_HOME "${CRC32C_PREFIX}")
+    set(CRC32C_INCLUDE_DIR "${CRC32C_PREFIX}/include")
+    # if (MSVC)
+    #   if (${UPPERCASE_BUILD_TYPE} STREQUAL "DEBUG")
+    #     set(CRC32C_STATIC_LIB_NAME zlibstaticd.lib)
+    #   else()
+    #     set(CRC32C_STATIC_LIB_NAME zlibstatic.lib)
+    #   endif()
+    # else()
+    #   set(CRC32C_STATIC_LIB_NAME libz.a)
+    # endif()
+    set(CRC32C_STATIC_LIB_NAME libcrc32c.a)
+    set(CRC32C_STATIC_LIB "${CRC32C_PREFIX}/lib/${CRC32C_STATIC_LIB_NAME}")
+    set(CRC32C_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                        -DCMAKE_INSTALL_PREFIX=${CRC32C_PREFIX}
+                        -DCRC32C_USE_GLOG=OFF -DCRC32C_BUILD_BENCHMARKS=OFF -DCRC32C_BUILD_TESTS=OFF
+                        -DCMAKE_C_FLAGS=${EP_C_FLAGS}
+                        -DCMAKE_CXX_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_CXX_FLAGS}
+                        -DCMAKE_C_FLAGS_${UPPERCASE_BUILD_TYPE}=${EP_C_FLAGS}
+                        -DBUILD_SHARED_LIBS=OFF)
+
+    ExternalProject_Add(crc32c_ep
+      URL "https://github.com/google/crc32c/archive/1.0.5.tar.gz"
+      ${EP_LOG_OPTIONS}
+      BUILD_BYPRODUCTS "${CRC32C_STATIC_LIB}"
+      CMAKE_ARGS ${CRC32C_CMAKE_ARGS})
+    set(CRC32C_VENDORED 1)
+  else()
+    find_package(CRC32C REQUIRED)
+    set(CRC32C_VENDORED 0)
+  endif()
+
+  include_directories(SYSTEM ${CRC32C_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(crc32c
+    STATIC_LIB ${CRC32C_STATIC_LIB})
+
+  if (CRC32C_VENDORED)
+    add_dependencies(crc32c crc32c_ep)
   endif()
 endif()
 

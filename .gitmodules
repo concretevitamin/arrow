@@ -1,0 +1,3 @@
+[submodule "cpp/src/plasma/thirdparty/crc32c"]
+	path = cpp/src/plasma/thirdparty/crc32c
+	url = git@github.com:google/crc32c.git

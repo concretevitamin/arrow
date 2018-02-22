@@ -23,12 +23,14 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../python/cmake_
 
 find_package(PythonLibsNew REQUIRED)
 find_package(Threads)
+# find_package(Crc32c REQUIRED)
 
 set(PLASMA_SO_VERSION "0")
 set(PLASMA_ABI_VERSION "${PLASMA_SO_VERSION}.0.0")
 
 include_directories(SYSTEM ${PYTHON_INCLUDE_DIRS})
 include_directories("${FLATBUFFERS_INCLUDE_DIR}" "${CMAKE_CURRENT_LIST_DIR}/" "${CMAKE_CURRENT_LIST_DIR}/thirdparty/" "${CMAKE_CURRENT_LIST_DIR}/../")
+include_directories("${CMAKE_CURRENT_LIST_DIR}/thirdparty/crc32c/include")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L")
 
@@ -48,6 +50,7 @@ add_custom_target(gen_plasma_fbs DEPENDS ${PLASMA_FBS_OUTPUT_FILES})
 if(FLATBUFFERS_VENDORED)
   add_dependencies(gen_plasma_fbs flatbuffers_ep)
 endif()
+
 
 add_custom_command(
   OUTPUT ${PLASMA_FBS_OUTPUT_FILES}
@@ -78,12 +81,14 @@ set(PLASMA_SRCS
   protocol.cc
   thirdparty/ae/ae.c
   thirdparty/xxhash.cc)
-
+# set(PLASMA_LINK_LIBS ${PLASMA_LINK_LIBS} ${CRC32C_STATIC_LIB})
+message(STATUS "linking crc32c? ${CRC32C_STATIC_LIB}")
+# message(STATUS "PLASMA_LINK_LIBS? ${PLASMA_LINK_LIBS}")
 ADD_ARROW_LIB(plasma
   SOURCES ${PLASMA_SRCS}
-  DEPENDENCIES gen_plasma_fbs
-  SHARED_LINK_LIBS ${FLATBUFFERS_STATIC_LIB} ${CMAKE_THREAD_LIBS_INIT} arrow_static
-  STATIC_LINK_LIBS ${FLATBUFFERS_STATIC_LIB} ${CMAKE_THREAD_LIBS_INIT} arrow_static)
+  DEPENDENCIES gen_plasma_fbs crc32c_ep
+  SHARED_LINK_LIBS ${CRC32C_STATIC_LIB} ${FLATBUFFERS_STATIC_LIB} ${CMAKE_THREAD_LIBS_INIT} arrow_static
+  STATIC_LINK_LIBS ${CRC32C_STATIC_LIB} ${FLATBUFFERS_STATIC_LIB} ${CMAKE_THREAD_LIBS_INIT} arrow_static)
 
 # The optimization flag -O3 is suggested by dlmalloc.c, which is #included in
 # malloc.cc; we set it here regardless of whether we do a debug or release build.
@@ -113,7 +118,7 @@ if ("${COMPILER_FAMILY}" STREQUAL "gcc")
 endif()
 
 add_executable(plasma_store store.cc)
-target_link_libraries(plasma_store plasma_static)
+target_link_libraries(plasma_store plasma_static  ${CRC32C_STATIC_LIB})
 
 # Headers: top level
 install(FILES
@@ -143,6 +148,6 @@ install(
 #######################################
 
 ADD_ARROW_TEST(test/serialization_tests)
-ARROW_TEST_LINK_LIBRARIES(test/serialization_tests plasma_static)
+ARROW_TEST_LINK_LIBRARIES(test/serialization_tests plasma_static ${CRC32C_STATIC_LIB})
 ADD_ARROW_TEST(test/client_tests)
-ARROW_TEST_LINK_LIBRARIES(test/client_tests plasma_static)
+ARROW_TEST_LINK_LIBRARIES(test/client_tests plasma_static ${CRC32C_STATIC_LIB})
