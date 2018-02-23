@@ -405,70 +405,79 @@ Status PlasmaClient::Contains(const ObjectID& object_id, bool* has_object) {
   return Status::OK();
 }
 
-// static void ComputeBlockHash(const unsigned char* data, int64_t nbytes, uint64_t* hash)
-// {
-//   ARROW_CHECK(0);
-//   *hash = 0;
-//   // const uint32_t checksum = crc32c::Crc32c(data, // static_cast<const char*>(data),
-//   //                                          static_cast<size_t>(nbytes));
-//   // *hash = static_cast<uint64_t>(checksum);
-//   // XXH64_state_t hash_state;
-//   // XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
-//   // XXH64_update(&hash_state, data, nbytes);
-//   // *hash = XXH64_digest(&hash_state);
-// }
-
-// static inline bool compute_object_hash_parallel(XXH64_state_t* hash_state,
-//                                                 const unsigned char* data,
-//                                                 int64_t nbytes) {
-//   // Note that this function will likely be faster if the address of data is
-//   // aligned on a 64-byte boundary.
-//   const int num_threads = kThreadPoolSize;
-//   uint64_t threadhash[num_threads + 1];
-//   const uint64_t data_address = reinterpret_cast<uint64_t>(data);
-//   const uint64_t num_blocks = nbytes / BLOCK_SIZE;
-//   const uint64_t chunk_size = (num_blocks / num_threads) * BLOCK_SIZE;
-//   const uint64_t right_address = data_address + chunk_size * num_threads;
-//   const uint64_t suffix = (data_address + nbytes) - right_address;
-//   // Now the data layout is | k * num_threads * block_size | suffix | ==
-//   // | num_threads * chunk_size | suffix |, where chunk_size = k * block_size.
-//   // Each thread gets a "chunk" of k blocks, except the suffix thread.
-
-//   for (int i = 0; i < num_threads; i++) {
-//     threadpool_[i] = std::thread(
-//         ComputeBlockHash, reinterpret_cast<uint8_t*>(data_address) + i * chunk_size,
-//         chunk_size, &threadhash[i]);
-//   }
-//   ComputeBlockHash(reinterpret_cast<uint8_t*>(right_address), suffix,
-//                    &threadhash[num_threads]);
-
-//   // Join the threads.
-//   for (auto& t : threadpool_) {
-//     if (t.joinable()) {
-//       t.join();
-//     }
-//   }
-
-//   XXH64_update(hash_state, reinterpret_cast<unsigned char*>(threadhash),
-//                sizeof(threadhash));
-//   return true;
-// }
-
-// NOTE(zongheng): this is called on ray.put().
-static uint64_t compute_object_hash(const ObjectBuffer& obj_buffer) {
+static inline void ComputeBlockHash(const unsigned char* data, int64_t nbytes, uint32_t* hash)
+{
   // ARROW_CHECK(0);
-  return 0;
+  // *hash = 0;
+  *hash = crc32c::Crc32c(data, // static_cast<const char*>(data),
+                                           static_cast<size_t>(nbytes));
   // XXH64_state_t hash_state;
   // XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
-  // if (obj_buffer.data_size >= kBytesInMB) {
-  //   compute_object_hash_parallel(
-  //       &hash_state, reinterpret_cast<const unsigned char*>(obj_buffer.data->data()),
-  //       obj_buffer.data_size);
-  // } else {
-  //   XXH64_update(&hash_state,
-  //                reinterpret_cast<const unsigned char*>(obj_buffer.data->data()),
-  //                obj_buffer.data_size);
-  // }
+  // XXH64_update(&hash_state, data, nbytes);
+  // *hash = XXH64_digest(&hash_state);
+}
+
+ static inline bool compute_object_hash_parallel(uint32_t* checksum, //XXH64_state_t* hash_state,
+                                                const unsigned char* data,
+                                                int64_t nbytes) {
+  // Note that this function will likely be faster if the address of data is
+  // aligned on a 64-byte boundary.
+  const int num_threads = kThreadPoolSize;
+  uint32_t threadhash[num_threads + 1];
+  const uint64_t data_address = reinterpret_cast<uint64_t>(data);
+  const uint64_t num_blocks = nbytes / BLOCK_SIZE;
+  const uint64_t chunk_size = (num_blocks / num_threads) * BLOCK_SIZE;
+  const uint64_t right_address = data_address + chunk_size * num_threads;
+  const uint64_t suffix = (data_address + nbytes) - right_address;
+  // Now the data layout is | k * num_threads * block_size | suffix | ==
+  // | num_threads * chunk_size | suffix |, where chunk_size = k * block_size.
+  // Each thread gets a "chunk" of k blocks, except the suffix thread.
+
+  for (int i = 0; i < num_threads; i++) {
+    threadpool_[i] = std::thread(
+        ComputeBlockHash, reinterpret_cast<uint8_t*>(data_address) + i * chunk_size,
+        chunk_size, &threadhash[i]);
+  }
+  ComputeBlockHash(reinterpret_cast<uint8_t*>(right_address), suffix,
+                   &threadhash[num_threads]);
+
+  // Join the threads.
+  for (auto& t : threadpool_) {
+    if (t.joinable()) {
+      t.join();
+    }
+  }
+
+  *checksum = crc32c::Crc32c(reinterpret_cast<unsigned char*>(threadhash),
+                 sizeof(threadhash));
+
+  // XXH64_update(hash_state, reinterpret_cast<unsigned char*>(threadhash),
+  //              sizeof(threadhash));
+  return true;
+}
+
+// NOTE(zongheng): this is called on ray.put().
+static uint32_t compute_object_hash(const ObjectBuffer& object_buffer) {
+  // ARROW_CHECK(0);
+  // return 0;
+  // XXH64_state_t hash_state;
+  // XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
+
+  uint32_t checksum;
+
+
+  if (object_buffer.data_size >= kBytesInMB) {
+    compute_object_hash_parallel(
+        &checksum, reinterpret_cast<const unsigned char*>(object_buffer.data->data()),
+        object_buffer.data_size);
+  } else {
+    checksum = crc32c::Crc32c(object_buffer.data->data(), object_buffer.data_size);
+    // XXH64_update(&hash_state,
+    //              reinterpret_cast<const unsigned char*>(obj_buffer.data->data()),
+    //              obj_buffer.data_size);
+  }
+  return crc32c::Extend(checksum, object_buffer.metadata->data(),
+                            object_buffer.metadata_size);
   // XXH64_update(&hash_state,
   //              reinterpret_cast<const unsigned char*>(obj_buffer.metadata->data()),
   //              obj_buffer.metadata_size);
@@ -562,13 +571,13 @@ Status PlasmaClient::Hash(const ObjectID& object_id, uint8_t* digest) {
     return Status::PlasmaObjectNonexistent("Object not found");
   }
   // Compute the hash.
-  // uint64_t hash = compute_object_hash(object_buffer);
-  // memcpy(digest, &hash, sizeof(hash));
+  uint32_t hash = compute_object_hash(object_buffer);
+  memcpy(digest, &hash, sizeof(hash));
 
-  uint32_t checksum = crc32c::Crc32c(object_buffer.data->data(), object_buffer.data_size);
-  checksum = crc32c::Extend(checksum, object_buffer.metadata->data(),
-                            object_buffer.metadata_size);
-  memcpy(digest, &checksum, sizeof(checksum));
+  // uint32_t checksum = crc32c::Crc32c(object_buffer.data->data(), object_buffer.data_size);
+  // checksum = crc32c::Extend(checksum, object_buffer.metadata->data(),
+  //                           object_buffer.metadata_size);
+  // memcpy(digest, &checksum, sizeof(checksum));
 
   // Release the plasma object.
   return Release(object_id);
